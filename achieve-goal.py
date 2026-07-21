@@ -21,11 +21,13 @@ Logika je idempotentna: višestruko pokretanje ne kreira duplikate.
 import argparse
 import base64
 import hashlib
+import http.client
 import json
 import os
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -78,7 +80,19 @@ def github_api(method: str, path: str, token: str, body: dict | None = None) -> 
     Vraća (status_code, parsed_json_ili_None).
     Nikad ne baca izuzetak na JSON parse — vraća (status, None) ako telo nije JSON.
     """
-    url = path if path.startswith("http") else f"https://api.github.com{path}"
+    # Path sadrži ime fajla koje može imati razmake → URL-enkoduj segment path-a
+    # (ali ne i API prefix koji je već čist)
+    if path.startswith("http"):
+        url = path
+    elif path.startswith("/repos/"):
+        # /repos/{owner}/{repo}/... — enkoduj sve segmente posle /repos/{owner}/{repo}/
+        parts = path.split("/", 4)  # ['', 'repos', 'owner', 'repo', 'rest']
+        if len(parts) == 5:
+            encoded_rest = "/".join(urllib.parse.quote(p, safe="") for p in parts[4].split("/"))
+            path = "/".join(parts[:4]) + "/" + encoded_rest
+        url = f"https://api.github.com{path}"
+    else:
+        url = f"https://api.github.com{path}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
         url,
@@ -100,6 +114,10 @@ def github_api(method: str, path: str, token: str, body: dict | None = None) -> 
         status = e.code
     except urllib.error.URLError as e:
         log(f"GitHub API mrežna greška ({path}): {e}")
+        return 0, None
+    except (ValueError, http.client.InvalidURL) as e:
+        # Npr. kontrolni znakovi u URL-u
+        log(f"GitHub API nevažeći URL ({path}): {e}")
         return 0, None
 
     if not raw.strip():
