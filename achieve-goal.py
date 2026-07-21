@@ -266,11 +266,24 @@ def reddit_credentials_available() -> bool:
 
 
 def run_reddit() -> list[str]:
-    """Reddit hook — pauziran dok ne stignu credentials."""
+    """Reddit hook — postuje na r/LocalLLaMA kad su credentials dostupni."""
     if not reddit_credentials_available():
         return ["reddit: PAUZIRANO — čekaju se PRAW credentials (REDDIT_CLIENT_ID/SECRET ili praw.ini)"]
-    # TODO: implementirati pravi PRAW post na r/LocalLLaMA kada stignu credentials
-    return ["reddit: TODO (credentials prisutni, implementacija sledi)"]
+
+    title = "Mac-Pilot: Zero-dependency macOS computer-use driver for AI agents"
+    body = (
+        "Check out Mac-Pilot - a minimal tool for AI agents to control macOS desktops.\n\n"
+        "Repo: https://github.com/shxmi03/mac-pilot\n\n"
+        "Looking for feedback and contributors!"
+    )
+    try:
+        import praw
+        reddit = praw.Reddit()
+        subreddit = reddit.subreddit("LocalLLaMA")
+        submission = subreddit.submit(title, selftext=body)
+        return [f"reddit: POSTED {submission.shortlink}"]
+    except Exception as e:
+        return [f"reddit: ERROR ({type(e).__name__}: {str(e)[:100]})"]
 
 
 # ---------------------------------------------------------------------------
@@ -294,11 +307,37 @@ def x_credentials_available() -> bool:
 
 
 def run_x() -> list[str]:
-    """X/Twitter hook — pauziran dok ne stignu credentials."""
+    """X/Twitter hook — postuje preko xurl kad su credentials dostupni."""
     if not x_credentials_available():
         return ["x: PAUZIRANO — čekaju se X API credentials (trenutno 'test' placeholder u ~/.xurl)"]
-    # TODO: implementirati pravi xurl post kada stignu credentials
-    return ["x: TODO (credentials prisutni, implementacija sledi)"]
+
+    xurl_path = "/home/opc/.npm-global/bin/xurl"
+    if not os.path.exists(xurl_path):
+        return [f"x: ERROR (xurl nije na očekivanom putu {xurl_path})"]
+
+    try:
+        result = subprocess.run(
+            [
+                xurl_path, "post",
+                "Mac-Pilot: Zero-dependency macOS computer-use driver for AI agents. "
+                "https://github.com/shxmi03/mac-pilot #LocalLLaMA",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            try:
+                data = json.loads(result.stdout)
+                tweet_id = (data.get("data") or {}).get("id", "unknown")
+                return [f"x: POSTED https://x.com/status/{tweet_id}"]
+            except json.JSONDecodeError:
+                return [f"x: OK (no JSON response): {result.stdout[:80]}"]
+        return [f"x: ERROR ({result.stderr[:100] or 'no stderr'})"]
+    except subprocess.TimeoutExpired:
+        return ["x: ERROR (timeout 30s)"]
+    except Exception as e:
+        return [f"x: ERROR ({type(e).__name__}: {str(e)[:100]})"]
 
 
 # ---------------------------------------------------------------------------
